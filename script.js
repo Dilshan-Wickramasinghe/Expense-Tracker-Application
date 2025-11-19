@@ -1,74 +1,135 @@
-const transaction = [];
-{
-    id: 1,
-        name: "Salary",
-            amount: 5000,
-                date: new Date(),
-                    type: "income"
-
-}
-{
-    id: 2,
-        name: "haircut",
-            amount: 700,
-                date: new Date(),
-                    type: "expense"
-
-}
-{
-    id: 3,
-        name: "concert ticket",
-            amount: 500,
-                date: new Date(),
-                    type: "expense"
-
-}
-
-const formatter = new Intl.NumberFormat('en-IN', {
-    style,
-    currency: 'LKR',
+const transactions = JSON.parse(localStorage.getItem("transactions")) || [];
+// Set currency to LKR (Sri Lankan Rupee)
+const formatter = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "LKR",
     signDisplay: "always",
+});
+// Get DOM elements
+const list = document.getElementById("transactionList");
+const form = document.getElementById("transactionForm");
+const balance = document.getElementById("balance");
+const income = document.getElementById("income");
+const expense = document.getElementById("expense");
+const dateInput = document.getElementById("date");
 
+dateInput.defaultValue = new Date().toISOString().split("T")[0];
 
-}
+form.addEventListener("submit", addTransaction);
 
-const list = document.getElementById('transactionList');
-const status = document.getElementById('status');
-function rederList() {
-    list.innerHTML = "";
-
-    if (transaction.length === 0) {
-        status.textContent = "No transactions available.";
-        return;
+function formatCurrency(value) {
+    if (value === 0) {
+        return formatter.format(0).replace(/^[+-]/, "");
     }
+    return formatter.format(value);
+}
+function createItem({ id, name, amount, date, type }) {
+    const sign = "income" === type ? 1 : -1;
 
+    const li = document.createElement("li");
 
-    transaction.forEach(({ id, name, date, , type }) => {
-        const li = document.createElement('li');
-        li.innerHTML = `
-        <div class="name">
+    li.innerHTML = `
+      <div class="name">
         <h4>${name}</h4>
-        <p>${new Date(date).toLocaleDateString()}<p>
-        </div>
+        <p>${new Date(date).toLocaleDateString()}</p>
+      </div>
 
-        <div class="amount ${type}">
-        <span>${formatter.format(amount)}</span>
-        </div>
+      <div class="amount ${type}">
+        <span>${formatCurrency(amount * sign)}</span>
+      </div>
+    `;
 
-        <div class="action">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
-          <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-          </svg>
-
-        </div>
-        `;
-
-
-        list.appendChild(li);
+    li.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (confirm("Delete transaction?")) {
+            deleteTransaction(id);
+        }
     });
 
+    return li;
+}
+// Update total balance, income, and expense
+function updateTotal() {
+    const incomeTotal = transactions
+        .filter((trx) => trx.type === "income")
+        .reduce((total, trx) => total + trx.amount, 0);
 
+    const expenseTotal = transactions
+        .filter((trx) => trx.type === "expense")
+        .reduce((total, trx) => total + trx.amount, 0);
+
+    const balanceTotal = incomeTotal - expenseTotal;
+
+    balance.textContent = formatCurrency(balanceTotal).replace(/^\+/, "");
+    income.textContent = formatCurrency(incomeTotal);
+    expense.textContent = formatCurrency(expenseTotal * -1);
+}
+// Render the transaction list
+function renderList() {
+    list.innerHTML = "";
+
+    transactions.forEach((transaction) => {
+        const li = createItem(transaction);
+        list.appendChild(li);
+    });
 }
 
 renderList();
+updateTotal();
+// Delete a transaction
+function deleteTransaction(id) {
+    const index = transactions.findIndex((trx) => trx.id === id);
+    transactions.splice(index, 1);
 
+    list.removeChild(list.children[index]);
+
+    updateTotal();
+    saveTransactions();
+}
+
+function addTransaction(e) {
+    e.preventDefault();
+
+    const formData = new FormData(form);
+    form.reset();
+
+    const uniqueId =
+        Date.now().toString(36) + Math.random().toString(36).substring(2);
+
+    const newTransaction = {
+        id: uniqueId,
+        name: formData.get("name"),
+        amount: parseFloat(formData.get("amount")),
+        date: new Date(formData.get("date")),
+        type: "on" === formData.get("type") ? "expense" : "income",
+    };
+
+    if (
+        !newTransaction.name ||
+        isNaN(newTransaction.amount) ||
+        !newTransaction.date
+    ) {
+        alert("Please fill in all fields correctly.");
+        return;
+    }
+
+    transactions.push(newTransaction);
+    saveTransactions();
+
+    const index = transactions.findIndex((trx) => trx.id === uniqueId);
+    const newListItem = createItem(newTransaction);
+    if (index === 0) {
+        list.prepend(newListItem);
+    } else {
+        const previousListItem = list.children[index - 1];
+        previousListItem.insertAdjacentElement("afterend", newListItem);
+    }
+
+    updateTotal();
+}
+// Save transactions to localStorage
+function saveTransactions() {
+    transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    localStorage.setItem("transactions", JSON.stringify(transactions));
+}
